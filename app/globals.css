@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #080908;
+  color: #d8d1c3;
+  font-family: var(--font-sans), sans-serif;
+}
+
+.font-serif {
+  font-family: var(--font-serif), serif;
+}
+
+.oracle-card {
+  border: 1px solid rgba(187, 151, 82, 0.18);
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(25, 26, 23, 0.86), rgba(11, 12, 11, 0.76));
+  box-shadow: inset 0 1px rgba(255, 235, 185, 0.035), 0 30px 80px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+}
+
+.seal {
+  border: 1px solid rgba(217, 179, 103, 0.45);
+  background: radial-gradient(circle, rgba(204, 163, 83, 0.13), transparent 68%);
+  box-shadow: 0 0 50px rgba(194, 151, 70, 0.12), inset 0 0 28px rgba(217, 179, 103, 0.08);
+}
+
+.line-glow {
+  box-shadow: 0 0 16px rgba(213, 176, 99, 0.22);
+}
+
+.ambient {
+  position: fixed;
+  width: 42rem;
+  height: 42rem;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(110px);
+  opacity: 0.1;
+}
+
+.ambient-one {
+  top: -22rem;
+  left: -15rem;
+  background: #b38b3e;
+}
+
+.ambient-two {
+  right: -24rem;
+  bottom: -20rem;
+  background: #386c63;
+}
+
+.grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  background-image: linear-gradient(rgba(214, 187, 128, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(214, 187, 128, 0.04) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(circle at center, black, transparent 75%);
+}
+
+.meta-pill {
+  display: inline-block;
+  margin: 0.25rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(172, 143, 84, 0.16);
+  border-radius: 999px;
+  color: #817762;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.verified-badge {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(91, 156, 132, 0.28);
+  border-radius: 999px;
+  color: #86aa9d;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d2ad64;
+  box-shadow: 0 0 14px #c59a48;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+.typing-cursor {
+  color: #d1ac62;
+  animation: blink 0.8s steps(2, jump-none) infinite;
+}
+
+@keyframes breathe {
+  50% { opacity: 0.25; transform: scale(0.75); }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
