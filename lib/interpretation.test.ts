@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildFacts,
   buildInterpretationFacts,
+  describeHexagramStructure,
+  describeTransformation,
   deriveRuleConclusion,
   lookupScripture,
   normalizeStrategies,
@@ -137,9 +139,36 @@ describe("可驗證解讀", () => {
     const conclusion = deriveRuleConclusion("我該不該接受這份工作？", result);
     const text = renderThreePartAnalysis(result, conclusion);
     expect(text).toContain("經文原文");
-    expect(text).toContain("卦意白話");
+    expect(text).toContain("本卦卦象");
+    expect(text).toContain("本卦卦意");
+    expect(text).toContain("變化趨勢");
     expect(text).toContain("針對你的提問");
+    expect(text).toContain("判斷依據");
+    expect(text).toContain("建議策略");
     expect(text).toContain("判讀規則");
+  });
+
+  it("完整說明上下卦結構", () => {
+    const structure = describeHexagramStructure(realResult());
+    expect(structure).toContain("上卦");
+    expect(structure).toContain("下卦");
+    expect(structure).toContain("內在基礎");
+    expect(structure).toContain("外在環境");
+  });
+
+  it("靜卦清楚說明本卦與之卦相同是正常結果", () => {
+    const lines: DivinationResult["lines"] = [8, 7, 8, 8, 8, 7];
+    const result = { ...baseResult, lines, ...deriveHexagrams(lines) };
+    expect(result.movingLines).toHaveLength(0);
+    const text = describeTransformation(result);
+    expect(text).toContain("本卦與之卦相同是正常結果");
+    expect(text).toContain("沒有形成不同的變卦");
+  });
+
+  it("一般提問的結論會直接帶入使用者問題", () => {
+    const conclusion = deriveRuleConclusion("這趟歐洲旅行順不順利？", realResult());
+    expect(conclusion.directAnswer).toContain("這趟歐洲旅行順不順利");
+    expect(conclusion.action.length).toBeGreaterThan(25);
   });
 
   it("天氣問題由程式規則產生結論，不交給 AI 決定", () => {

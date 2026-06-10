@@ -29,6 +29,17 @@ const DEFAULT_STRATEGIES: StrategyId[] = ["clarify", "small-test", "seek-feedbac
 
 const YAO_POSITION_NAMES = ["初", "二", "三", "四", "五", "上"];
 
+const TRIGRAM_MEANINGS: Record<string, { image: string; quality: string }> = {
+  乾: { image: "天", quality: "主動、剛健、持續推進" },
+  坤: { image: "地", quality: "承載、包容、順勢配合" },
+  坎: { image: "水", quality: "險阻、流動、反覆試煉" },
+  離: { image: "火", quality: "明察、依附、顯現與照亮" },
+  震: { image: "雷", quality: "啟動、震動、突發變化" },
+  巽: { image: "風", quality: "滲透、溝通、漸進影響" },
+  艮: { image: "山", quality: "停止、界線、穩住位置" },
+  兌: { image: "澤", quality: "交流、喜悅、開放互動" },
+};
+
 const WEATHER_KEYWORDS = /天氣|氣象|下雨|會雨|雨勢|晴天|晴朗|陰天|多雲|颱風|雷雨|帶傘|戶外|出門.*雨/;
 
 const WEATHER_WEIGHTS: Record<string, Partial<Record<RuleConclusion["verdict"], number>>> = {
@@ -270,13 +281,18 @@ function addScore(
 export function deriveRuleConclusion(question: string, result: DivinationResult): RuleConclusion {
   const reading = selectReading(result);
   if (!WEATHER_KEYWORDS.test(question)) {
+    const isStatic = result.movingLines.length === 0;
     return {
       category: "general",
       verdict: "mixed",
-      directAnswer: `此卦目前不宜被簡化成單一吉凶；判讀重點是「${lookupMeaning(result.primary.name)}」`,
+      directAnswer: isStatic
+        ? `這次是靜卦，卦象沒有顯示明顯轉折；針對「${question}」，目前情勢較可能延續既有格局，宜先看清條件再決定是否前進。`
+        : `針對「${question}」，卦象顯示事情正由「${result.primary.name}」的現況，往「${result.transformed.name}」所代表的方向轉變。`,
       action: result.movingLines.length >= 3
         ? `局勢變動較多，先比較「${result.primary.name}」到「${result.transformed.name}」的差異，再決定下一步。`
-        : "先依本次採用的經文重點檢查現況，再做一個可回頭的小步驟。",
+        : isStatic
+          ? "先補足資訊、確認限制與可用資源；若要行動，採取可回頭的小步驟，並觀察現況是否出現新的變化訊號。"
+          : "先依動爻揭示的關鍵位置檢查現況，再採取一個可驗證、可調整的小步驟。",
       confidence: "low",
       evidenceIds: [...reading.evidenceIds, "reading-rule", "primary-meaning"],
     };
@@ -318,15 +334,34 @@ export function deriveRuleConclusion(question: string, result: DivinationResult)
   };
 }
 
+export function describeHexagramStructure(result: DivinationResult): string {
+  const upper = TRIGRAM_MEANINGS[result.primary.upper];
+  const lower = TRIGRAM_MEANINGS[result.primary.lower];
+  return `本卦「${result.primary.name}」由上卦${result.primary.upper}（象${upper.image}，重點為${upper.quality}）與下卦${result.primary.lower}（象${lower.image}，重點為${lower.quality}）組成。下卦可視為事情的內在基礎與起點，上卦則呈現外在環境與後續表現；兩者合看，形成此卦的整體處境。`;
+}
+
+export function describeTransformation(result: DivinationResult): string {
+  if (result.movingLines.length === 0) {
+    return `本次六爻皆靜，因此沒有形成不同的變卦；畫面中的本卦與之卦相同是正常結果。這表示卦象重點集中在「${result.primary.name}」本身，目前格局偏向延續，短期內未呈現明顯轉折。`;
+  }
+  const transformedUpper = TRIGRAM_MEANINGS[result.transformed.upper];
+  const transformedLower = TRIGRAM_MEANINGS[result.transformed.lower];
+  return `本次第 ${result.movingLines.join("、")} 爻變動，使本卦轉為「${result.transformed.name}」。之卦由上${result.transformed.upper}（象${transformedUpper.image}，${transformedUpper.quality}）與下${result.transformed.lower}（象${transformedLower.image}，${transformedLower.quality}）組成，用來觀察事情經過變化後較可能呈現的趨勢。`;
+}
+
 export function renderThreePartAnalysis(
   result: DivinationResult,
   conclusion: RuleConclusion,
 ): string {
   const selection = selectReading(result);
+  const transformedMeaning = result.primary.name === result.transformed.name
+    ? ""
+    : `\n\n之卦趨勢\n${lookupMeaning(result.transformed.name)}`;
   return [
     `經文原文\n${selection.classical.join("\n")}`,
-    `卦意白話\n${lookupMeaning(result.primary.name)}${result.primary.name !== result.transformed.name ? ` 由「${result.primary.name}」轉為「${result.transformed.name}」，後勢可參考：${lookupMeaning(result.transformed.name)}` : ""}`,
-    `針對你的提問\n${conclusion.directAnswer}\n${conclusion.action}`,
+    `本卦卦象\n${describeHexagramStructure(result)}\n\n本卦卦意\n${lookupMeaning(result.primary.name)}`,
+    `變化趨勢\n${describeTransformation(result)}${transformedMeaning}`,
+    `針對你的提問\n結論：${conclusion.directAnswer}\n\n判斷依據：本次依「${selection.rule}」判讀，並以本卦所呈現的現況與之卦所顯示的變化方向交叉檢查。\n\n建議策略：${conclusion.action}`,
     `判讀規則\n${selection.rule}`,
     `可信程度：${conclusion.confidence === "medium" ? "中等" : "偏低"}。卦象只提供象徵性參考，不是事實保證。`,
   ].join("\n\n");

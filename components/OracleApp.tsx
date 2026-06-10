@@ -149,7 +149,13 @@ export function OracleApp() {
                     hexagram={result.primary}
                     movingLines={result.movingLines}
                   />
-                  <HexagramDisplay label="之卦 · 趨勢" hexagram={result.transformed} />
+                  <HexagramDisplay
+                    label={result.movingLines.length ? "之卦 · 趨勢" : "之卦 · 無變卦"}
+                    hexagram={result.transformed}
+                    note={result.movingLines.length
+                      ? "由動爻變化後形成，代表後續趨勢。"
+                      : "六爻皆靜，沒有形成不同的變卦，因此與本卦相同。"}
+                  />
                 </div>
               )}
             </motion.section>
