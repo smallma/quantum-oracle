@@ -1,10 +1,13 @@
-import { deriveHexagrams } from "@/lib/hexagrams";
+import { deriveHexagrams, deriveMutualHexagram } from "@/lib/hexagrams";
+import { lookupMeaning } from "@/lib/hexagram-meanings";
 import { Lunar } from "lunar-javascript";
 import scriptureData from "@/lib/scripture.json";
 import type {
   DivinationResult,
   InterpretationFact,
   LineValue,
+  ReadingSelection,
+  RuleConclusion,
   Scripture,
   StrategyId,
 } from "@/lib/types";
@@ -25,6 +28,19 @@ export const STRATEGIES: Record<StrategyId, string> = {
 const DEFAULT_STRATEGIES: StrategyId[] = ["clarify", "small-test", "seek-feedback"];
 
 const YAO_POSITION_NAMES = ["初", "二", "三", "四", "五", "上"];
+
+const WEATHER_KEYWORDS = /天氣|氣象|下雨|會雨|雨勢|晴天|晴朗|陰天|多雲|颱風|雷雨|帶傘|戶外|出門.*雨/;
+
+const WEATHER_WEIGHTS: Record<string, Partial<Record<RuleConclusion["verdict"], number>>> = {
+  乾: { clear: 3 },
+  坤: { cloudy: 3 },
+  坎: { rain: 4 },
+  離: { clear: 3 },
+  震: { storm: 3, changeable: 1 },
+  巽: { wind: 3, changeable: 1 },
+  艮: { cloudy: 1 },
+  兌: { rain: 1, cloudy: 1 },
+};
 
 export function lookupScripture(name: string): Scripture {
   const s = SCRIPTURE[name];
@@ -124,6 +140,12 @@ export function buildFacts(result: DivinationResult): InterpretationFact[] {
     },
   ];
 
+  const mutual = deriveMutualHexagram(result.primary.lines);
+  facts.push({
+    id: "mutual",
+    statement: `互卦為「${mutual.name}」（${mutual.upper}上${mutual.lower}下），用來觀察局勢內在發展。`,
+  });
+
   result.movingLines.forEach((pos) => {
     const yao = primaryS.yao[pos - 1];
     facts.push({
@@ -141,6 +163,173 @@ export function buildFacts(result: DivinationResult): InterpretationFact[] {
   facts.push({ id: "month", statement: `節氣月建為「${result.monthBranch}」。` });
   facts.push({ id: "day", statement: `日辰「${result.dayGanZhi}」，採子初 23:00 換日。` });
   return facts;
+}
+
+function lineFact(pos: number, scripture: Scripture, transformed = false): InterpretationFact {
+  return {
+    id: `${transformed ? "transformed-" : ""}yao-${pos}`,
+    statement: `${transformed ? "之卦" : "本卦"}第${pos}爻（${YAO_POSITION_NAMES[pos - 1]}）爻辭：${scripture.yao[pos - 1]}`,
+  };
+}
+
+export function selectReading(result: DivinationResult): ReadingSelection {
+  const count = result.movingLines.length;
+  const primary = lookupScripture(result.primary.name);
+  const transformed = lookupScripture(result.transformed.name);
+  const unchanged = [1, 2, 3, 4, 5, 6].filter((pos) => !result.movingLines.includes(pos));
+
+  if (count === 0) {
+    return { rule: "靜卦：以本卦卦辭為主。", classical: [primary.gua], evidenceIds: ["primary-gua"] };
+  }
+  if (count === 1) {
+    const pos = result.movingLines[0];
+    return { rule: "一爻動：以本卦動爻為主。", classical: [primary.yao[pos - 1]], evidenceIds: [`yao-${pos}`] };
+  }
+  if (count === 2) {
+    const positions = [...result.movingLines].sort((a, b) => b - a);
+    return {
+      rule: "二爻動：兼看兩條動爻，以上爻為主。",
+      classical: positions.map((pos) => primary.yao[pos - 1]),
+      evidenceIds: positions.map((pos) => `yao-${pos}`),
+    };
+  }
+  if (count === 3) {
+    return {
+      rule: "三爻動：比較本卦與之卦卦辭，觀察前後轉變。",
+      classical: [primary.gua, transformed.gua],
+      evidenceIds: ["primary-gua", "transformed-gua"],
+    };
+  }
+  if (count === 4) {
+    const positions = [...unchanged].sort((a, b) => a - b);
+    return {
+      rule: "四爻動：以之卦兩條不變爻為主，以下爻為主。",
+      classical: positions.map((pos) => transformed.yao[pos - 1]),
+      evidenceIds: positions.map((pos) => `transformed-yao-${pos}`),
+    };
+  }
+  if (count === 5) {
+    const pos = unchanged[0];
+    return {
+      rule: "五爻動：以之卦唯一不變爻為主。",
+      classical: [transformed.yao[pos - 1]],
+      evidenceIds: [`transformed-yao-${pos}`],
+    };
+  }
+  if (result.primary.name === "乾為天") {
+    return {
+      rule: "乾卦六爻皆動：採用九。",
+      classical: ["用九：見群龍无首，吉。"],
+      evidenceIds: ["use-nine"],
+    };
+  }
+  if (result.primary.name === "坤為地") {
+    return {
+      rule: "坤卦六爻皆動：採用六。",
+      classical: ["用六：利永貞。"],
+      evidenceIds: ["use-six"],
+    };
+  }
+  return {
+    rule: "六爻皆動：以之卦卦辭觀其結果。",
+    classical: [transformed.gua],
+    evidenceIds: ["transformed-gua"],
+  };
+}
+
+export function buildInterpretationFacts(result: DivinationResult): InterpretationFact[] {
+  const facts = buildFacts(result);
+  const transformed = lookupScripture(result.transformed.name);
+  const selection = selectReading(result);
+  for (const id of selection.evidenceIds) {
+    const match = id.match(/^transformed-yao-(\d)$/);
+    if (match) facts.push(lineFact(Number(match[1]), transformed, true));
+  }
+  facts.push({ id: "reading-rule", statement: selection.rule });
+  if (selection.evidenceIds.includes("use-nine")) {
+    facts.push({ id: "use-nine", statement: "乾卦用九：見群龍无首，吉。" });
+  }
+  if (selection.evidenceIds.includes("use-six")) {
+    facts.push({ id: "use-six", statement: "坤卦用六：利永貞。" });
+  }
+  facts.push({ id: "primary-meaning", statement: `本卦固定卦意：${lookupMeaning(result.primary.name)}` });
+  facts.push({ id: "transformed-meaning", statement: `之卦固定卦意：${lookupMeaning(result.transformed.name)}` });
+  return facts;
+}
+
+function addScore(
+  scores: Record<string, number>,
+  trigram: string,
+  weight: number,
+) {
+  for (const [verdict, score] of Object.entries(WEATHER_WEIGHTS[trigram] ?? {})) {
+    scores[verdict] = (scores[verdict] ?? 0) + Number(score) * weight;
+  }
+}
+
+export function deriveRuleConclusion(question: string, result: DivinationResult): RuleConclusion {
+  const reading = selectReading(result);
+  if (!WEATHER_KEYWORDS.test(question)) {
+    return {
+      category: "general",
+      verdict: "mixed",
+      directAnswer: `此卦目前不宜被簡化成單一吉凶；判讀重點是「${lookupMeaning(result.primary.name)}」`,
+      action: result.movingLines.length >= 3
+        ? `局勢變動較多，先比較「${result.primary.name}」到「${result.transformed.name}」的差異，再決定下一步。`
+        : "先依本次採用的經文重點檢查現況，再做一個可回頭的小步驟。",
+      confidence: "low",
+      evidenceIds: [...reading.evidenceIds, "reading-rule", "primary-meaning"],
+    };
+  }
+
+  const mutual = deriveMutualHexagram(result.primary.lines);
+  const scores: Record<string, number> = {};
+  addScore(scores, result.primary.upper, 3);
+  addScore(scores, result.primary.lower, 3);
+  addScore(scores, mutual.upper, 1);
+  addScore(scores, mutual.lower, 1);
+  addScore(scores, result.transformed.upper, 1);
+  addScore(scores, result.transformed.lower, 1);
+  const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const [first, second] = ranked;
+  const verdict = (first?.[0] ?? "changeable") as RuleConclusion["verdict"];
+  const close = !first || Boolean(second && first[1] - second[1] <= 2);
+  const labels: Record<RuleConclusion["verdict"], string> = {
+    clear: "偏晴朗或日照較明顯",
+    cloudy: "偏陰或雲量較多",
+    rain: "偏向有雨或濕度升高",
+    wind: "偏向風勢較明顯",
+    storm: "偏向有雷雨或突發變化",
+    changeable: "偏向天氣快速變化",
+    mixed: "訊號互相衝突，難判單一走向",
+  };
+  const finalVerdict = close ? "mixed" : verdict;
+  return {
+    category: "weather",
+    verdict: finalVerdict,
+    directAnswer: close
+      ? "卦象中的天氣訊號互相牽制，無法可靠判成單一晴雨結果。"
+      : `依卦象規則，本次天氣傾向${labels[verdict]}。`,
+    action: ["rain", "storm", "mixed", "changeable"].includes(finalVerdict)
+      ? "安排戶外活動時保留備案並攜帶雨具；卦象不是氣象觀測，出門前仍應查即時預報。"
+      : "戶外安排可照常準備，但卦象不是氣象觀測，出門前仍應查即時預報。",
+    confidence: close ? "low" : "medium",
+    evidenceIds: ["primary", "mutual", "transformed", "reading-rule"],
+  };
+}
+
+export function renderThreePartAnalysis(
+  result: DivinationResult,
+  conclusion: RuleConclusion,
+): string {
+  const selection = selectReading(result);
+  return [
+    `經文原文\n${selection.classical.join("\n")}`,
+    `卦意白話\n${lookupMeaning(result.primary.name)}${result.primary.name !== result.transformed.name ? ` 由「${result.primary.name}」轉為「${result.transformed.name}」，後勢可參考：${lookupMeaning(result.transformed.name)}` : ""}`,
+    `針對你的提問\n${conclusion.directAnswer}\n${conclusion.action}`,
+    `判讀規則\n${selection.rule}`,
+    `可信程度：${conclusion.confidence === "medium" ? "中等" : "偏低"}。卦象只提供象徵性參考，不是事實保證。`,
+  ].join("\n\n");
 }
 
 export function normalizeStrategies(value: unknown): StrategyId[] {

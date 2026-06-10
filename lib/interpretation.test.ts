@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFacts,
+  buildInterpretationFacts,
+  deriveRuleConclusion,
   lookupScripture,
   normalizeStrategies,
+  renderThreePartAnalysis,
   renderVerifiedAnalysis,
+  selectReading,
   verifyDivination,
 } from "@/lib/interpretation";
 import { deriveHexagrams } from "@/lib/hexagrams";
+import { lookupMeaning } from "@/lib/hexagram-meanings";
 import type { DivinationResult } from "@/lib/types";
 
 // 設計這組資料時，lines = [9,7,8,8,7,8]，動爻在第 1 爻，
@@ -40,6 +45,16 @@ describe("經文查詢", () => {
       expect(s.yao).toHaveLength(6);
       s.yao.forEach((y) => expect(y.length).toBeGreaterThan(0));
     }
+  });
+
+  it("64 卦皆有固定白話卦意", () => {
+    const names = new Set<string>();
+    for (let value = 0; value < 64; value += 1) {
+      const lines = Array.from({ length: 6 }, (_, index) => Boolean(value & (1 << index)));
+      names.add(deriveHexagrams(lines.map((line) => line ? 7 : 8)).primary.name);
+    }
+    expect(names.size).toBe(64);
+    for (const name of names) expect(lookupMeaning(name).length).toBeGreaterThan(20);
   });
 
   it("查無此卦會丟出錯誤", () => {
@@ -89,5 +104,48 @@ describe("可驗證解讀", () => {
       ...derived,
       monthBranch: "子",
     })).toThrow("月建或日辰與占卜時間不一致");
+  });
+
+  it("三爻動只比較本卦與之卦卦辭", () => {
+    const lines: DivinationResult["lines"] = [9, 7, 9, 8, 8, 6];
+    const result = { ...baseResult, lines, ...deriveHexagrams(lines) };
+    const reading = selectReading(result);
+    expect(reading.rule).toContain("三爻動");
+    expect(reading.evidenceIds).toEqual(["primary-gua", "transformed-gua"]);
+    expect(reading.classical).toHaveLength(2);
+  });
+
+  it("四爻動使用之卦兩條不變爻", () => {
+    const lines: DivinationResult["lines"] = [9, 6, 9, 8, 7, 6];
+    const result = { ...baseResult, lines, ...deriveHexagrams(lines) };
+    const reading = selectReading(result);
+    expect(reading.rule).toContain("四爻動");
+    expect(reading.evidenceIds).toEqual(["transformed-yao-4", "transformed-yao-5"]);
+    expect(buildInterpretationFacts(result).some((fact) => fact.id === "transformed-yao-4")).toBe(true);
+  });
+
+  it("乾卦六爻皆動採用九", () => {
+    const lines: DivinationResult["lines"] = [9, 9, 9, 9, 9, 9];
+    const result = { ...baseResult, lines, ...deriveHexagrams(lines) };
+    const reading = selectReading(result);
+    expect(reading.evidenceIds).toEqual(["use-nine"]);
+    expect(reading.classical[0]).toContain("群龍无首");
+  });
+
+  it("三段式輸出固定包含原文、卦意白話與提問結論", () => {
+    const result = realResult();
+    const conclusion = deriveRuleConclusion("我該不該接受這份工作？", result);
+    const text = renderThreePartAnalysis(result, conclusion);
+    expect(text).toContain("經文原文");
+    expect(text).toContain("卦意白話");
+    expect(text).toContain("針對你的提問");
+    expect(text).toContain("判讀規則");
+  });
+
+  it("天氣問題由程式規則產生結論，不交給 AI 決定", () => {
+    const conclusion = deriveRuleConclusion("明天會下雨嗎？", realResult());
+    expect(conclusion.category).toBe("weather");
+    expect(conclusion.evidenceIds).toContain("mutual");
+    expect(conclusion.action).toContain("即時預報");
   });
 });

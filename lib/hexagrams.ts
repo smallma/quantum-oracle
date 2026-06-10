@@ -51,3 +51,8 @@ export function deriveHexagrams(values: LineValue[]) {
     ),
   };
 }
+
+export function deriveMutualHexagram(lines: boolean[]): HexagramInfo {
+  if (lines.length !== 6) throw new Error("互卦需要完整六爻。");
+  return describeHexagram([lines[1], lines[2], lines[3], lines[2], lines[3], lines[4]]);
+}

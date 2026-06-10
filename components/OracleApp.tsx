@@ -176,13 +176,13 @@ export function OracleApp() {
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
               <p className="text-[10px] tracking-[0.4em] text-[#a88b55]">易理回聲</p>
               {phase === "complete" && (
-                <span className="verified-badge">已驗證事實 · AI 不負責算卦</span>
+                <span className="verified-badge">規則判讀 · AI 僅篩選核准依據</span>
               )}
             </div>
             {phase === "analyzing" && (
               <div className="flex items-center gap-3 text-sm text-[#8d8578]">
                 <span className="thinking-dot" />
-                正在衡量月建、日辰與動爻的氣勢……
+                正在依動爻規則選取經文與核對卦象……
               </div>
             )}
             {phase === "complete" && <ResultTyping text={analysis} />}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { castYarrowLine } from "@/lib/divination";
-import { deriveHexagrams, describeHexagram } from "@/lib/hexagrams";
+import { deriveHexagrams, deriveMutualHexagram, describeHexagram } from "@/lib/hexagrams";
 
 describe("大衍之數", () => {
   it.each([
@@ -45,5 +45,12 @@ describe("大衍之數", () => {
     expect(r.primary.name).toBe("地雷復");
     expect(r.transformed.name).toBe("坤為地");
     expect(r.movingLines).toEqual([1]);
+  });
+
+  it("互卦以二三四爻為下卦、三四五爻為上卦", () => {
+    const primary = describeHexagram([true, true, true, false, false, true]);
+    expect(deriveMutualHexagram(primary.lines).lines).toEqual([
+      true, true, false, true, false, false,
+    ]);
   });
 });

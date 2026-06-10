@@ -26,6 +26,21 @@ export type InterpretationFact = {
   statement: string;
 };
 
+export type ReadingSelection = {
+  rule: string;
+  classical: string[];
+  evidenceIds: string[];
+};
+
+export type RuleConclusion = {
+  category: "weather" | "general";
+  verdict: "clear" | "cloudy" | "rain" | "wind" | "storm" | "changeable" | "mixed";
+  directAnswer: string;
+  action: string;
+  confidence: "low" | "medium";
+  evidenceIds: string[];
+};
+
 export type StrategyId =
   | "pause"
   | "small-test"
@@ -40,7 +55,7 @@ export type VerifiedInterpretation = {
   analysis: string;
   facts: InterpretationFact[];
   strategyIds: StrategyId[];
-  mode: "verified" | "verified-llm" | "verified-fallback";
+  mode: "rule-engine" | "verified-llm" | "verified-fallback";
 };
 
 export type Scripture = {
