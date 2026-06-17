@@ -3,9 +3,11 @@ import { lookupMeaning } from "@/lib/hexagram-meanings";
 import { Lunar } from "lunar-javascript";
 import scriptureData from "@/lib/scripture.json";
 import type {
+  AnalysisSection,
   DivinationResult,
   InterpretationFact,
   LineValue,
+  LlmConclusion,
   ReadingSelection,
   RuleConclusion,
   Scripture,
@@ -42,6 +44,8 @@ const TRIGRAM_MEANINGS: Record<string, { image: string; quality: string }> = {
 
 const WEATHER_KEYWORDS = /天氣|氣象|下雨|會雨|雨勢|晴天|晴朗|陰天|多雲|颱風|雷雨|帶傘|戶外|出門.*雨/;
 
+// 八卦配天時取象出自《梅花易數·占天時》（乾晴、坤陰、坎雨、離晴、震雷、巽風、艮雲、兌澤雨）；
+// 權重數值為自訂啟發式，非典籍規定。「不分體用、全觀諸卦」精神同《梅花易數》。
 const WEATHER_WEIGHTS: Record<string, Partial<Record<RuleConclusion["verdict"], number>>> = {
   乾: { clear: 3 },
   坤: { cloudy: 3 },
@@ -63,9 +67,9 @@ function assertLines(lines: unknown): asserts lines is LineValue[] {
   if (
     !Array.isArray(lines) ||
     lines.length !== 6 ||
-    lines.some((line) => ![6, 7, 8, 9].includes(Number(line)))
+    lines.some((line) => typeof line !== "number" || ![6, 7, 8, 9].includes(line))
   ) {
-    throw new Error("六爻資料必須完整且只能包含 6、7、8、9。");
+    throw new Error("六爻資料必須完整且只能包含數字 6、7、8、9。");
   }
 }
 
@@ -206,7 +210,7 @@ export function selectReading(result: DivinationResult): ReadingSelection {
   }
   if (count === 3) {
     return {
-      rule: "三爻動：比較本卦與之卦卦辭，觀察前後轉變。",
+      rule: "三爻動：占本卦及之卦卦辭，以本卦為貞（主）、之卦為悔（輔）。",
       classical: [primary.gua, transformed.gua],
       evidenceIds: ["primary-gua", "transformed-gua"],
     };
@@ -214,7 +218,7 @@ export function selectReading(result: DivinationResult): ReadingSelection {
   if (count === 4) {
     const positions = [...unchanged].sort((a, b) => a - b);
     return {
-      rule: "四爻動：以之卦兩條不變爻為主，以下爻為主。",
+      rule: "四爻動：占之卦二不變爻，以下爻為主。",
       classical: positions.map((pos) => transformed.yao[pos - 1]),
       evidenceIds: positions.map((pos) => `transformed-yao-${pos}`),
     };
@@ -349,22 +353,74 @@ export function describeTransformation(result: DivinationResult): string {
   return `本次第 ${result.movingLines.join("、")} 爻變動，使本卦轉為「${result.transformed.name}」。之卦由上${result.transformed.upper}（象${transformedUpper.image}，${transformedUpper.quality}）與下${result.transformed.lower}（象${transformedLower.image}，${transformedLower.quality}）組成，用來觀察事情經過變化後較可能呈現的趨勢。`;
 }
 
+// 結構化輸出：結論先行、LLM 負責個人化內容、規則與經文收在「為什麼這樣判讀」
+export function buildAnalysisSections(
+  result: DivinationResult,
+  conclusion: RuleConclusion,
+  llm?: LlmConclusion | null,
+): AnalysisSection[] {
+  const selection = selectReading(result);
+
+  const movingLabel = result.movingLines.length
+    ? `第 ${result.movingLines.join("、")} 爻`
+    : "無（靜卦，六爻皆不變）";
+  const hexagramLine = result.primary.name === result.transformed.name
+    ? `本卦（你現在的處境）：${result.primary.name}　·　動爻（這次變動的關鍵）：${movingLabel}`
+    : `本卦（你現在的處境）：${result.primary.name}　→　之卦（變化後的趨勢）：${result.transformed.name}　·　動爻（這次變動的關鍵）：${movingLabel}`;
+
+  // fallback 白話解讀：卦意 + 變化說明（沒有 LLM 時也要讀得懂）
+  const fallbackExplanation = [
+    lookupMeaning(result.primary.name),
+    describeTransformation(result),
+    result.primary.name === result.transformed.name
+      ? ""
+      : `之卦「${result.transformed.name}」的意涵：${lookupMeaning(result.transformed.name)}`,
+  ].filter(Boolean).join("\n\n");
+
+  // 天氣類永遠保留「卦象不是氣象觀測」免責，不被 LLM advice 蓋掉
+  const advice = conclusion.category === "weather"
+    ? `${llm?.advice ? `${llm.advice}\n` : ""}${conclusion.action}`
+    : llm?.advice || conclusion.action;
+
+  const basisBody = [
+    `本次依「${selection.rule}」判讀。`,
+    `經文原文：${selection.classical.join("；")}`,
+    llm?.basis ?? "",
+  ].filter(Boolean).join("\n");
+
+  return [
+    {
+      id: "verdict",
+      title: "先說結論",
+      body: llm?.verdict || conclusion.directAnswer,
+      llm: Boolean(llm?.verdict),
+    },
+    { id: "hexagram", title: "你的卦象", body: hexagramLine, llm: false },
+    {
+      id: "explanation",
+      title: "白話解讀",
+      body: llm?.explanation || fallbackExplanation,
+      llm: Boolean(llm?.explanation),
+    },
+    { id: "advice", title: "建議怎麼做", body: advice, llm: Boolean(llm?.advice) },
+    { id: "basis", title: "為什麼這樣判讀", body: basisBody, llm: Boolean(llm?.basis) },
+    {
+      id: "disclaimer",
+      title: "",
+      body: "本解讀依《周易》原文與固定判讀規則產生，僅供整理思路參考，不預測吉凶結果。",
+      llm: false,
+    },
+  ];
+}
+
 export function renderThreePartAnalysis(
   result: DivinationResult,
   conclusion: RuleConclusion,
+  llm?: LlmConclusion | null,
 ): string {
-  const selection = selectReading(result);
-  const transformedMeaning = result.primary.name === result.transformed.name
-    ? ""
-    : `\n\n之卦趨勢\n${lookupMeaning(result.transformed.name)}`;
-  return [
-    `經文原文\n${selection.classical.join("\n")}`,
-    `本卦卦象\n${describeHexagramStructure(result)}\n\n本卦卦意\n${lookupMeaning(result.primary.name)}`,
-    `變化趨勢\n${describeTransformation(result)}${transformedMeaning}`,
-    `針對你的提問\n結論：${conclusion.directAnswer}\n\n判斷依據：本次依「${selection.rule}」判讀，並以本卦所呈現的現況與之卦所顯示的變化方向交叉檢查。\n\n建議策略：${conclusion.action}`,
-    `判讀規則\n${selection.rule}`,
-    `可信程度：${conclusion.confidence === "medium" ? "中等" : "偏低"}。卦象只提供象徵性參考，不是事實保證。`,
-  ].join("\n\n");
+  return buildAnalysisSections(result, conclusion, llm)
+    .map((section) => (section.title ? `${section.title}\n${section.body}` : section.body))
+    .join("\n\n");
 }
 
 export function normalizeStrategies(value: unknown): StrategyId[] {

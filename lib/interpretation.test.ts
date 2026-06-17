@@ -148,6 +148,30 @@ describe("可驗證解讀", () => {
     expect(text).toContain("判讀規則");
   });
 
+  it("有 LLM 具體解釋時，結論段落帶入白話而非只有方向模板", () => {
+    const result = realResult();
+    const conclusion = deriveRuleConclusion("我該不該接受這份工作？", result);
+    const llm = {
+      explanation: "這份工作的卦象具體解釋內容。",
+      basis: "依爻辭某句判讀的具體理由。",
+      advice: "針對接受工作的具體可執行建議。",
+    };
+    const text = renderThreePartAnalysis(result, conclusion, llm);
+    expect(text).toContain("這份工作的卦象具體解釋內容");
+    expect(text).toContain("依爻辭某句判讀的具體理由");
+    expect(text).toContain("針對接受工作的具體可執行建議");
+    // 結論方向仍保留
+    expect(text).toContain(conclusion.directAnswer);
+  });
+
+  it("沒有 LLM 時，判斷依據退回模板並帶入經文原文", () => {
+    const result = realResult();
+    const conclusion = deriveRuleConclusion("我該不該接受這份工作？", result);
+    const text = renderThreePartAnalysis(result, conclusion, null);
+    const selection = selectReading(result);
+    expect(text).toContain(selection.classical.join("；"));
+  });
+
   it("完整說明上下卦結構", () => {
     const structure = describeHexagramStructure(realResult());
     expect(structure).toContain("上卦");
